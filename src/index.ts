@@ -5,20 +5,23 @@ const kafka = new Kafka({
     clientId : "my-app", 
     brokers : ['localhost:9092']
 })
+
+let prices :any 
+let currentPrice
+let balance = 500000 //in dollars no decimals
+const openOrders :any =[]
+
 const producer = kafka.producer(); 
 async function connectPKafka() {
     await producer.connect(); 
-    await producer.send({ 
-        topic : "Q2",
-        messages : [{ 
-            value : "ahhhhhh ahhhhhhh"
-        }]
-    })
 }
 
 connectPKafka()
 
-const consumer = kafka.consumer({groupId:'group-1'})
+
+const consumer = kafka.consumer({groupId:'group-2'})
+
+
 async function connectCkafka() {
     await consumer.connect(); 
     await consumer.subscribe({ 
@@ -26,18 +29,163 @@ async function connectCkafka() {
     })
     await consumer.run({ 
         eachMessage:async({topic , partition , message})=> { 
-            console.log({
-                offset : message.offset, 
-                value : message?.value?.toString()
-            })
-        }
-    })
+            const data = message?.value?.toString(); 
+            if(data){
+                try { 
+                const maindata = JSON.parse(data)
+                if(maindata.type == 'prices'){ 
+                    prices = maindata.prices
+                    console.log("price updated" + prices)
+                    // console.log("reacched till here")
+                }
+                if(maindata.type == 'trade'){ 
+                    console.log("reacched till here")
+
+                    let data = maindata.trade
+                    const assett :string = data.asset;
+                    const reqId = data.reqId
+                    const currentPrice =  prices?.[assett].price; 
+                    const margin = data.margin
+                    const leverage = data.leverage;
+                    const slippage = data.slippage
+                    const type = data.type
+                    if(balance > margin) { 
+                        const orderId = Date.now()
+                        balance = balance - margin
+                        openOrders.push({ 
+                            orderId : orderId , 
+                            asset : assett , 
+                            margin : margin , 
+                            leverage : leverage , 
+                            type : type , 
+                            slippage : slippage  , 
+                            openPrice : currentPrice , 
+                        })
+                        
+
+                       await producer.send({ 
+                            topic : "Q2",
+                            messages : [{ 
+                                value : JSON.stringify( { 
+
+                                orderId : orderId , 
+                                asset : assett , 
+                                state : 'open',
+                                margin : margin , 
+                                leverage : leverage , 
+                                type : type , 
+                                slippage : slippage  , 
+                                openPrice : currentPrice
+                            })
+                            }]
+
+
+                        })
+                        console.log("reacched till here")
+                        
+                    }
+                }
+                if(maindata.type == 'closeOrder'){ 
+                    console.log("aagya yha pr")
+                    const data = maindata.trade; 
+                    const orderId = data.orderId;
+                    console.log("order to close" + orderId)
+                    //@ts-ignore
+                    
+                    const order = openOrders.find(o=>o.orderId === orderId)
+                    console.log("found the order" + JSON.stringify(order))
+                    const asset = order.asset
+                    const currentPrice = prices?.[asset].price; 
+                    console.log("current price of the asset" + asset + "current price" + currentPrice)
+                    const quantity = order.openPrice/order.margin; 
+                    const sellPrice = currentPrice*quantity;
+                
+                    if(order.leverage == 1){ 
+                        let profit 
+                        if(order.type =='buy'){ 
+                            profit = sellPrice - (order.margin);
+                        }
+                        else if(order.type == 'sell'){ 
+                            profit = (order.margin) - sellPrice;
+                        }
+                        console.log("reached till here ttoooo wow")
+                        balance += order.margin + profit;
+                            await producer.send({ 
+                            topic : "Q2",
+                            messages : [{ 
+                                value : JSON.stringify( { 
+                                orderId : orderId , 
+                                state : 'closed',
+                                asset : asset , 
+                                margin : order.margin , 
+                                leverage : order.leverage , 
+                                type : order.type , 
+                                slippage : order.slippage  , 
+                                openPrice : currentPrice , 
+                                closedPrice : currentPrice 
+                            })
+                            }]
+
+
+                        })
+                    }
+                    else if(order.leverage >1){ 
+                        let profit 
+                        if(order.type =='buy'){ 
+                            profit = sellPrice - (order.margin);
+                        }
+                        else if(order.type == 'sell'){ 
+                            profit = (order.margin) - sellPrice;
+                        }
+                        if(profit){
+                            profit*=order.leverage
+                            balance += order.margin + profit;
+                            await producer.send({ 
+                            topic : "Q2",
+                            messages : [{ 
+                                value : JSON.stringify( { 
+                                orderId : orderId , 
+                                state : 'closed',
+                                asset : asset , 
+                                margin : order.margin , 
+                                leverage : order.leverage , 
+                                type : order.type , 
+                                slippage : order.slippage  , 
+                                openPrice : currentPrice , 
+                                closedPrice : currentPrice 
+                            })
+                            }]
+
+
+                        })
+                        }
+
+                    
+                    }
+                    
+                }
+                if(maindata.type == 'getBalance'){ 
+
+                }
+                if(maindata.type == 'SupportedAssets'){ 
+
+                }
+            } 
+            catch(e) { 
+                console.log("hehe" + e)
+            }
+            }
+            else{ 
+                // console.log(JSON.stringify(data))
+            }
+            
+            
+    }})
 }
+    
+
 connectCkafka()
-const prices :any = []
-let currentPrice
-let balance = 500000 //in dollars no decimals
-const openOrders :any =[]
+
 
 
 
