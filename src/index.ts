@@ -188,7 +188,17 @@ async function connectCkafka() {
                     
                 }
                 if(maindata.type == 'getBalance'){ 
-
+                    const reqId = maindata.data.reqId; 
+                    await producer.send({ 
+                        topic  : 'Q2', 
+                        messages : [{ 
+                            value  : JSON.stringify({ 
+                                state : "balance" ,
+                                balance : balance , 
+                                id : reqId
+                            })
+                        }]
+                    })
                 }
                 if(maindata.type == 'SupportedAssets'){ 
 
