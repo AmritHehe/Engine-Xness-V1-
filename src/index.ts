@@ -8,7 +8,7 @@ const kafka = new Kafka({
 
 let prices :any 
 let currentPrice
-let balance = 500000 //in dollars no decimals
+let balance = 50000000 //in dollars no decimals
 const openOrders :any =[]
 
 const producer = kafka.producer(); 
@@ -45,13 +45,13 @@ async function connectCkafka() {
                     const assett :string = data.asset;
                     const reqId = data.reqId
                     const currentPrice =  prices?.[assett].price; 
-                    const margin = data.margin
+                    const margin = data.margin 
                     const leverage = data.leverage;
                     const slippage = data.slippage
                     const type = data.type
-                    if(balance > margin) { 
+                    if(balance > (margin*100)) { 
                         const orderId = Date.now()
-                        balance = balance - margin
+                        balance = balance - (margin*100)
                         openOrders.push({ 
                             orderId : orderId , 
                             asset : assett , 
@@ -60,6 +60,7 @@ async function connectCkafka() {
                             type : type , 
                             slippage : slippage  , 
                             openPrice : currentPrice , 
+                            reqId : reqId
                         })
                         
 
@@ -67,7 +68,7 @@ async function connectCkafka() {
                             topic : "Q2",
                             messages : [{ 
                                 value : JSON.stringify( { 
-
+                                reqId : reqId ,
                                 orderId : orderId , 
                                 asset : assett , 
                                 state : 'open',
@@ -75,7 +76,7 @@ async function connectCkafka() {
                                 leverage : leverage , 
                                 type : type , 
                                 slippage : slippage  , 
-                                openPrice : currentPrice
+                                openPrice : currentPrice,
                             })
                             }]
 
@@ -89,6 +90,8 @@ async function connectCkafka() {
                     console.log("aagya yha pr")
                     const data = maindata.trade; 
                     const orderId = data.orderId;
+                    const reqId = data.reqId;
+                    
                     console.log("order to close" + orderId)
                     //@ts-ignore
                     
@@ -96,20 +99,31 @@ async function connectCkafka() {
                     console.log("found the order" + JSON.stringify(order))
                     const asset = order.asset
                     const currentPrice = prices?.[asset].price; 
-                    console.log("current price of the asset" + asset + "current price" + currentPrice)
-                    const quantity = order.openPrice/order.margin; 
-                    const sellPrice = currentPrice*quantity;
+                    const currentDecimal = prices?.[asset].decimal;
+                    console.log("current price of the asset" + asset + "current price" + currentPrice + "current decimal " + currentDecimal)
+                    const numberToEqualizeMargin = 10**(currentDecimal-2)
+                    console.log('number to Equalize margin ' + numberToEqualizeMargin)
+                    const quantity = ((order.margin * numberToEqualizeMargin)/order.openPrice); 
+                    console.log("Quantitiy" + quantity)
+                    const sellPrice = Math.trunc(currentPrice*quantity);
+                    console.log("sell price  " + sellPrice)  
                 
                     if(order.leverage == 1){ 
                         let profit 
                         if(order.type =='buy'){ 
-                            profit = sellPrice - (order.margin);
+                            profit = sellPrice - ((order.margin)*numberToEqualizeMargin);
+                            
                         }
                         else if(order.type == 'sell'){ 
-                            profit = (order.margin) - sellPrice;
+                            profit = ((order.margin)*numberToEqualizeMargin) - sellPrice;
                         }
-                        console.log("reached till here ttoooo wow")
-                        balance += order.margin + profit;
+                        console.log("order buy price  : " + order.margin*numberToEqualizeMargin)
+                        //@ts-ignore
+                        balance +=((profit/(10**(currentDecimal-4))) + ((order.margin)*100));
+                        // balance +=  Math.trunc(sellPrice/10**(currentDecimal-4))
+
+                        //@ts-ignore
+                        console.log("to check , currentProfit = " + profit/(10**currentDecimal) + "balance : " + balance/(10**4))
                             await producer.send({ 
                             topic : "Q2",
                             messages : [{ 
@@ -122,7 +136,9 @@ async function connectCkafka() {
                                 type : order.type , 
                                 slippage : order.slippage  , 
                                 openPrice : currentPrice , 
-                                closedPrice : currentPrice 
+                                closedPrice : currentPrice  , 
+                                reqId : reqId
+
                             })
                             }]
 
@@ -132,14 +148,20 @@ async function connectCkafka() {
                     else if(order.leverage >1){ 
                         let profit 
                         if(order.type =='buy'){ 
-                            profit = sellPrice - (order.margin);
+                            profit = sellPrice - ((order.margin)*numberToEqualizeMargin);
+                            
                         }
                         else if(order.type == 'sell'){ 
-                            profit = (order.margin) - sellPrice;
+                            profit = ((order.margin)*numberToEqualizeMargin) - sellPrice;
                         }
+                        console.log("order buy price  : " + order.margin*numberToEqualizeMargin)
+
                         if(profit){
+
                             profit*=order.leverage
-                            balance += order.margin + profit;
+                            balance +=((profit/(10**(currentDecimal-4))) + ((order.margin)*100));
+                            //@ts-ignore
+                            console.log("to check , currentProfit = " + profit/(10**currentDecimal) + "balance : " + balance/(10**4))
                             await producer.send({ 
                             topic : "Q2",
                             messages : [{ 
@@ -152,7 +174,8 @@ async function connectCkafka() {
                                 type : order.type , 
                                 slippage : order.slippage  , 
                                 openPrice : currentPrice , 
-                                closedPrice : currentPrice 
+                                closedPrice : currentPrice , 
+                                reqId : reqId
                             })
                             }]
 
