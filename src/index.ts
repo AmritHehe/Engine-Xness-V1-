@@ -1,6 +1,6 @@
 
 import { Kafka  } from "kafkajs"
-
+import { PrismaClient } from "../src/generated/prisma/index.js"
 const kafka = new Kafka({ 
     clientId : "my-app", 
     brokers : ['localhost:9092']
@@ -8,7 +8,12 @@ const kafka = new Kafka({
 
 let prices :any 
 let currentPrice
-let balance = 50000000 //in dollars no decimals
+let balance = 50000000 //in dollars , 4 decimals
+let offset : number
+
+const prisma = new PrismaClient()
+
+
 const openOrders :any =[]
 
 const producer = kafka.producer(); 
@@ -29,6 +34,7 @@ async function connectCkafka() {
     })
     await consumer.run({ 
         eachMessage:async({topic , partition , message})=> { 
+            offset = Number(message.offset);
             const data = message?.value?.toString(); 
             if(data){
                 try { 
@@ -220,7 +226,22 @@ async function connectCkafka() {
 connectCkafka()
 
 
-
+setInterval(async ()=> { 
+    try{ 
+        await prisma.snap.create({
+            data : { 
+                openOrders : JSON.stringify(openOrders) , 
+                balance : balance , 
+                offsetId : offset
+            }
+        }) ; 
+        console.log("snapshotted the db " )
+    }
+    catch(err){ 
+        console.error('hahaha fail hogis')
+    }
+    
+} , 60000)
 
 
 //we can either create multiple publishers and subscribers or just create one publisher in which we can find through message that what user want to do

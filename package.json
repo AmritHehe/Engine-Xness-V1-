@@ -5,15 +5,20 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "npx tsc -b && node ./dist/index.js"
+    "dev": "npx tsc -b && node ./dist/index.js",
+    "db": "npx tsc -b && node ./dist/db.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@prisma/client": "^6.15.0",
+    "@types/node": "^24.3.1",
     "@types/ws": "^8.18.1",
     "kafkajs": "^2.2.4",
+    "prisma": "^6.15.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.2",
     "ws": "^8.18.3"
   }
